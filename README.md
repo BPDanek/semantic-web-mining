@@ -1,7 +1,11 @@
 # semantic-web-mining
 CSE 573 Semantic Web Mining: Browser Extension
 
+Tutorial:
 https://developer.chrome.com/docs/extensions/mv2/getstarted/
+
+Demo:
+https://drive.google.com/file/d/12ZdymfL8-B7MYO3II4qDbg4afHWjnWSF/view?usp=sharing
 
 Tasks:
 - Basics: 
