@@ -6,9 +6,7 @@ import re
 import os.path
 import urllib.parse
 
-'''
-Utility function that will replace all the tab separators in each list of URLs
-'''
+
 def remove_tab_delimiters(s):
     return re.sub('\x09', '', s)
 
@@ -26,29 +24,35 @@ def parse_urls(s):
     # Map a function that remove tab characters left over from urllib conversion. Now, we have a list of
     # fully functional URLs
     url = list(map(remove_tab_delimiters, url))
+    # Strip out all non-urls
+    # Map + filter takes ~ 10 minutes, but list comp takes around 2.5 minutes
+    url = [x for x in url if x.startswith("http")]
+    # Deletion of non-url elements results in a whole bunch of None entries, filter them out
     return url
 
-if __name__ == '__main__':
-    LENGTH_OF_GRAPHDB = 1048576
-    DICT_PICKLE_FILE_NAME = "knowledgegraphdict.pkl"
+
+def load_data_into_dict(graph_db_length, dict_pickle_file_name):
     start = time.time()
     entities = defaultdict()
     # Try to open the .pkl file, and also validate it by checking if it's the right length
-    if os.path.isfile(DICT_PICKLE_FILE_NAME):
-        with open(DICT_PICKLE_FILE_NAME, 'rb') as f:
+    if os.path.isfile(dict_pickle_file_name):
+        with open(dict_pickle_file_name, 'rb') as f:
             entities = pickle.load(f)
-        if len(entities.keys()) != LENGTH_OF_GRAPHDB:
-            print(f"Incorrect length: {len(entities.keys())} rows of {LENGTH_OF_GRAPHDB} present in .pkl file")
+        if len(entities.keys()) != graph_db_length:
+            print(f"Incorrect length: {len(entities.keys())} rows of {graph_db_length} present in .pkl file")
         # The .pkl file loads in 2 seconds! Nice!
-        print(f"Finished in {time.time() - start} seconds")
+        print(f".pkl file loaded in {time.time() - start} seconds")
+        return entities
     else:
         with open("knowledgegraphdata.csv", encoding="utf-8") as f:
             csv_reader = csv.reader(f, delimiter=",")
-            next(csv_reader) # Skip the header
+            next(csv_reader)  # Skip the header
             for i, row in enumerate(csv_reader):
                 # Split along the tab to get each entry in the CSV separated.
                 record = row[0].split("\t")
-
+                # Sometimes the entire record cannot fit on the first line of the csv and carries over to the next. To
+                # address this, we concatenate all the subsequent lines until we get to a line that begins with the
+                # "concept" substring, indicating the end of the entry
                 # This separation also leaves a string of length 0 as an entry each time, so try to strip it out here
                 try:
                     record.remove('')
@@ -73,11 +77,34 @@ if __name__ == '__main__':
                     pass
                 entities[i] = record
             # Loads entire knowledge graph in 54 seconds...how much faster is pkl?
-        print(f"Finished in {time.time() - start} seconds")
-        with open(DICT_PICKLE_FILE_NAME, "wb") as f:
-            pickle.dump(entities, f)
-    for value in entities.values():
-        value[-1] = parse_urls(value[-1])
-        print(value)
+        print(f"Finished loading into dict in {time.time() - start} seconds, length is {len(entities.keys())}")
+        return entities
+
+
+def parse_urls_in_entities_dict(url_pkl_file_name, entities, graph_db_length):
+    start = time.time()
+    if os.path.isfile(url_pkl_file_name):
+        with open(url_pkl_file_name, 'rb') as f:
+            entities_1 = pickle.load(f)
+        if len(entities_1.keys()) != graph_db_length:
+            print(f"Incorrect length: {len(entities.keys())} rows of {graph_db_length} present in .pkl file")
+        # The .pkl file loads in 2 seconds! Nice!
+        print(f".pkl file loaded in {time.time() - start} seconds")
+        return entities_1
+    entities_1 = dict(map(lambda x: (x[0], parse_urls(x[1][-1])), entities.items()))
+    # Dict/zip method takes 246.497 seconds
+    # Map method takes 218.458 seconds
+    print(f"Finished cleaning URLs in {time.time() - start} seconds, length is {len(entities_1.keys())}")
+    return entities_1
+
+
+def dict_to_pkl_file(dict_file_name, entities):
+    start = time.time()
+    with open(dict_file_name, "wb") as f:
+        pickle.dump(entities, f)
+    print(f"Saved object to {dict_file_name} in {time.time() - start} seconds")
+    f.close()
+
+
 
 
