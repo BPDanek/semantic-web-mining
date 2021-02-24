@@ -7,6 +7,10 @@ import os.path
 import urllib.parse
 
 
+def remove_newline_delimiters(s):
+    return re.sub('\x0a', '', s)
+
+
 def remove_tab_delimiters(s):
     return re.sub('\x09', '', s)
 
@@ -106,5 +110,33 @@ def dict_to_pkl_file(dict_file_name, entities):
     f.close()
 
 
+def validate_observation_structure(value):
+    '''
+    This function will return true if the values in the array follow the schema presented, and false otherwise
+    Runs quite fast tbh
+    '''
+    try:
+        # In some cases, the entity concept isn't actually a concept. Let's dump these observations
+        entity_concept = value[-3].split()
+        if not entity_concept[0].startswith("concept"):
+            return False
+    except IndexError:
+        # Some entries are length 0. Drop these
+        return False
+    return True
+
+
+def delete_blank_entries_in_observation(value):
+    '''
+    Utility function that will remove blank entries from each observation. Also, drop the last entry in each of these
+    lists (the source data) -  we have filtered the requisite information from these and no longer need them. We also
+    want to replace all relations of type 'generalization' with
+    '''
+    try:
+        value.remove('')
+        del value[-1]
+    except ValueError:
+        pass
+    return value
 
 
