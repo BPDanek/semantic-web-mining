@@ -10,7 +10,10 @@ class URLVerification:
         domain names respectively. This way, we can continuously track which URLs have already been seen. To make this
         run faster and faster, I will continually save this to a .pkl file.
         We also keep track of the top level domains here
+        We also track full URLs in a separate dictionary because there is a tendency to repeatedly query the same URL
+        let's avoid that
         '''
+        self.full_seen_urls = {}
         self.valid_urls = {}
         self.defunct_urls = {}
         self.top_level_domains = top_level_domains
