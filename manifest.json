@@ -1,15 +1,27 @@
 {
-  "name": "Bens Getting Started Example",
-  "version": "0.0",
-  "description": "Bens version of Build an Extension!",
-  "permissions": ["activeTab", "declarativeContent", "storage"],
+  "name": "Social Browser Extension, CSE 573",
+  "version": "0.1",
+  "description": "First stub of browser extension",
+  "permissions": [
+    "activeTab",
+    "declarativeContent",
+    "storage",
+    "history"
+  ],
   "options_page": "options.html",
   "background": {
     "scripts": ["background.js"],
     "persistent": false
   },
+  "content_scripts": [
+    {
+      "matches": ["https://www.google.com/search/*"],
+      "js": ["content.js"]
+    }
+  ],
   "page_action": {
     "default_popup": "popup.html",
+    "default_title": "CSE573 Browser Extension",
     "default_icon": {
       "16": "images/get_started16.png",
       "32": "images/get_started32.png",
