@@ -16,7 +16,18 @@ function validator(phrase_to_store) {
         console.log("set phrase_to_store parameter in chrome.storage.sync")
     })
 
+    chrome.history.search({
+        'text': '',              // Return every history item....
+        'maxResults': 100  // that was accessed less than one week ago.
+    }, function(historyItem) {
+        console.log(historyItem)
+    });
+
+
     chrome.storage.sync.get(null, function(result) {
         console.log("retrieved from storage:", result)
     })
+
+
+
 }
