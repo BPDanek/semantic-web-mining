@@ -26,35 +26,35 @@ Tasks:
 # Knowledge Graph Usage
 First, install requirements:
 
-``bash
+```bash
 pip install requirements.txt
-``
+```
 
 Set the environment variables `FLASK_APP` and `FLASK_ENV`: 
 
-``bash
+```bash
 export FLASK_APP=endpoint
 export FLASK_ENV=development
-``
+```
 
 or, if on Windows:
 
-``bash
+```bash
 set FLASK_APP=endpoint
 set FLASK_ENV=development
-``
+```
 
 Spin up the Flask App
 
-``bash
+```bash
 flask run
-``
+```
 
 Request bodies for this need to be computed within Python with spaCy, so run:
 
-``bash
+```bash
 python requestlauncher.py [filename]
-``
+```
 
 where the file is a list of URLs.
 
