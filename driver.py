@@ -1,3 +1,5 @@
+import json
+
 import datacleaning as dc
 import os
 import spacy
@@ -5,6 +7,7 @@ from entityextraction import EntityExtraction
 from urlverification import URLVerification
 from graphconstructor import KnowledgeGraph
 import pickle
+import requests
 
 if __name__ == '__main__':
 
@@ -66,6 +69,13 @@ if __name__ == '__main__':
                         url_v.full_seen_urls[url] = domain_terms
     if not os.path.isfile(TEST_URLS_PICKLE_FILE_NAME):
         dc.to_pkl_file(TEST_URLS_PICKLE_FILE_NAME, url_v.full_seen_urls)
+    local_endpoint = "http://127.0.0.1:5000"
+    local_endpoint += '/simmatrix'
+    payload = {
+        'url_list': json.dumps(url_v.full_seen_urls)
+    }
+
+    requests.post(local_endpoint, data=payload)
     knowledge_graph = KnowledgeGraph(knowledge_graph_df, urls_for_samples, url_v.full_seen_urls)
     knowledge_graph.construct_similarity_matrix()
     '''

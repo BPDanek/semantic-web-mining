@@ -2,6 +2,15 @@ import numpy as np
 
 
 class KnowledgeGraph:
+    '''
+    :param knowledge_graph_df: a DataFrame containing the rows of observations and the requisite information
+                                that comes with each one; i.e the type of relation it partakes in, the URLs that
+                                this info was gleaned from, etc.
+    :param urls_for_samples: Dict where keys are enumerated sample #s and values are the set of URLs that defined the
+                                relationship in that sample
+    :param set_of_random_urls: A subset of the urls_for_samples parameter, just in for ease of testing right now. Will
+                                remove later
+    '''
     def __init__(self, knowledge_graph_df, urls_for_samples, set_of_random_urls):
         self.knowledge_graph_df = knowledge_graph_df
         self.urls_for_samples = urls_for_samples
@@ -14,7 +23,6 @@ class KnowledgeGraph:
         # based on the entity types and all that
         self.set_of_random_urls = set_of_random_urls
         # Reindex starting from zero, since we are putting this information into a matrix
-        self.set_of_random_urls = {i: v for i, v in enumerate(set_of_random_urls.values())}
 
     def get_relation_types(self):
         relation_types = self.knowledge_graph_df["Relation"].unique()
@@ -35,10 +43,10 @@ class KnowledgeGraph:
             for k2, terms2 in self.set_of_random_urls.items():
                 if k1 == k2:
                     continue
-                common_terms = list(set(terms1).intersection(terms2))
+                common_terms = list(set(terms1).intersection(terms2)) # Find the terms present in both URLs
                 if len(common_terms) > 0:
                     print(k1, k2, common_terms)
-                sim_matrix[k1][k2] = len(common_terms)
+                sim_matrix[k1][k2] = len(common_terms) # The number of common elements in url i and url j
         print(sim_matrix)
 
 
