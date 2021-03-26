@@ -22,3 +22,40 @@ Tasks:
     - user login backend w/ access to data
 - Database:
     - acquired data to DB
+
+# Knowledge Graph Usage
+First, install requirements:
+
+```bash
+pip install requirements.txt
+```
+
+Set the environment variables `FLASK_APP` and `FLASK_ENV`: 
+
+```bash
+export FLASK_APP=endpoint
+export FLASK_ENV=development
+```
+
+or, if on Windows:
+
+```bash
+set FLASK_APP=endpoint
+set FLASK_ENV=development
+```
+
+Spin up the Flask App
+
+```bash
+flask run
+```
+
+Request bodies for this need to be computed within Python with spaCy, so run:
+
+```bash
+python requestlauncher.py [filename]
+```
+
+where the file is a list of URLs.
+
+The app will print out (in the console) a similarity matrix where entry (i,j) is the number of common domain terms between URL i and URL j.
