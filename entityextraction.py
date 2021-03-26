@@ -43,22 +43,24 @@ class EntityExtraction:
         # Locate all the <meta> tags in a document that have the name=keyword moniker somewhere. This gives us a list of
         # topics that the article is about.
         meta_tag = soup.find("meta", {"name": re.compile(".*keyword*")})
+
         tags = []
         try:
-            tags = meta_tag["content"].split(",")
-        except KeyError:
-            # Some files do not have keyword tags. In this case, we want to extract the text via the <p> tags and
-            # perform spaCy entity extraction on them.
-            tags = self.get_text_from_paragraph_tags(file_html)
-        except TypeError:
-            # Some files do not have keyword tags. In this case, we want to extract the text via the <p> tags and
-            # perform spaCy entity extraction on them.
+            # Split the string on both the commas and the semicolons i.e. Coronavirus;COVID-19 is a single term in the
+            # tags but should be separated
+            tags = re.split('[,;]', meta_tag["content"])
+        except (KeyError, TypeError):
+            # Some files do not have keyword tags. Try to find the description and title, concatenate them, and
+            # perform entity extraction on that
+            # If even this fails, we just scrape the <p> tags. I'd rather not do this
             tags = self.get_text_from_paragraph_tags(file_html)
         return tags
 
     def get_text_from_paragraph_tags(self, file_html):
         '''
         If the description and metadata don't tell us enough, we can put the text of this article through spaCy as well
+        This is a super fallback; <p> tag concatentation introduces a lot of garbage into our text and we don't want
+        to do it unless we have to.
         '''
         soup = BeautifulSoup(file_html, 'html.parser')
         paragraph_tags = soup.findAll("p")
@@ -87,11 +89,13 @@ class EntityExtraction:
         except Exception:
             # A whole lot of exceptions can be thrown here. If any one of them does, we can skip.
             # If a URL has already been verified as defunct, stop checking it again
+            print("Request failed")
             return domain_terms
         file_html = r.text
         response_code = r.status_code
         if response_code != 200:
             # In the case of a failed connection, return a blank list to signal that the URL is defunct.
+            print("Request failed!")
             return []
         metadata_tags = self.collect_metadata_tags(file_html)
         if isinstance(metadata_tags, str):
@@ -103,6 +107,7 @@ class EntityExtraction:
                 # The limit on the number of characters that can be used in a spaCy model is 1 million, so trim the text
                 # down to that many characters and recompute the description
                 description = self.nlp_model(metadata_tags[:1000000])
+
             # Only track some of the entities, some, like numbers and percentages, are useless. Still deliberating on
             # using NORP in this...will see later
             useful_entity_types = ['EVENT', 'FAC', 'GPE', 'LANGUAGE', 'LAW', 'LOC', 'ORG', 'PERSON', 'PRODUCT',
