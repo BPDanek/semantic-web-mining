@@ -1,7 +1,9 @@
 import numpy as np
 from collections import Counter
 import datacleaning as dc
+import pandas as pd
 from segmentation import segment
+pd.options.mode.chained_assignment = None  # default='warn'
 
 
 class KnowledgeGraph:
@@ -15,29 +17,54 @@ class KnowledgeGraph:
                                 remove later
     :param nlp: spaCy object
     '''
-    def __init__(self, knowledge_graph_df, urls_for_samples, set_of_random_urls, nlp):
+    def __init__(self, knowledge_graph_df, urls_for_samples, nlp):
         self.knowledge_graph_df = knowledge_graph_df
         self.urls_for_samples = urls_for_samples
-        # We may not need the following two attributes, but leave them in since they could be useful
-        self.entity_concept_pairs = self.get_entity_types()
-        # Get all unique types of entities
-        self.entity_types = list(set(self.entity_concept_pairs.keys()))
-        # Collect the unique values of the previous dictionary, representing all the unique concepts an
-        # entity could take
-        self.concept_types = list(set(self.entity_concept_pairs.values()))
-        self.concept_types = list(map(self.segment_concept_names, self.concept_types))
-        print(self.concept_types)
+        self.nlp = nlp
+        self.segmentation_mappings = {}
+        self.edit_distances = {} # Track the edit distances so we don't recompute
+        self.triples = self.generate_triples()
+        # When segmenting, don't check segmentations twice. Track the seen ones here
+        # Gather the unique entities, relations, and values
+        self.entity_types = self.triples["Entity"].unique()
+        self.relation_types = self.triples["Relation"].unique()
+        self.concept_types = self.triples["Segmented Concept"].unique()
         # Track the number of times each unique concept appears, to be used for normalizing scores
-        self.concept_counts = Counter(self.concept_types)
-        self.relation_types = self.get_relation_types()
+
+        self.concept_counts = Counter(self.triples["Segmented Concept"])
         # Collect a dictionary of URLs and their requisite domain terms. I want to try constructing a similarity matrix
         # based on the entity types and all that
-        self.set_of_random_urls = set_of_random_urls
-        self.nlp = nlp
+
         # Reindex starting from zero, since we are putting this information into a matrix
+
+    '''
+    Create a set of (entity, relation, Concept) triples from the first three columns of the dataframe
+    '''
+    def generate_triples(self):
+        triples_df = pd.DataFrame(columns=["Entity", "Relation", "Concept", "Segmented Concept"])
+        # Extract the name of the entity
+        self.knowledge_graph_df = self.knowledge_graph_df.loc[
+            ~self.knowledge_graph_df["Value"].str.contains('\d+\.*\d+')]
+        triples_df["Entity"] = self.knowledge_graph_df["Entity"].apply(lambda x: x.split(":")[-1])
+        triples_df["Relation"] = self.knowledge_graph_df["Relation"].apply(lambda x: x.split(":")[-1])
+        # Splitting on concept to catch the 'haswikipediaurl' case where value is a URL and : split fails
+        triples_df["Concept"] = self.knowledge_graph_df["Value"].apply(lambda x: x.split(":")[1]
+                                                                    if not x.startswith("http") and
+                                                                       len(x.split(":")) > 1 else x)
+        # Partition the names of the concepts, to save computation in the actual graph construction
+        triples_df["Segmented Concept"] = triples_df["Concept"].apply(self.segment_concept_names)
+        return triples_df
 
     def segment_concept_names(self, concept):
         # These concepts often consist of two words stitched together. Let's try to break them apart here
+        if concept.startswith("http"):
+            # Occasionally a URL will appear
+            return concept
+        if '_' in concept:
+            return concept.replace('_', ' ')
+        if concept in self.segmentation_mappings:
+            # If we've segmented this normally, return
+            return self.segmentation_mappings[concept]
         concept_words = segment(concept)  # This adds a lot of overhead. We need to compute this earlier
         no_entries_length_1 = True
         for w in concept_words:
@@ -47,9 +74,13 @@ class KnowledgeGraph:
                 no_entries_length_1 = False
                 break
         if no_entries_length_1:
-            # Case if segmentation was successful
+            # Case if segmentation was
+            # print(" ".join(concept_words))
+            self.segmentation_mappings.update({concept: " ".join(concept_words)})
             return " ".join(concept_words)
         else:
+            # print(concept)
+            self.segmentation_mappings.update({concept: concept})
             return concept
 
     def get_relation_types(self):
@@ -58,21 +89,12 @@ class KnowledgeGraph:
         return dict.fromkeys(list(map(lambda x: x[2] if x[0] == '' else x[0], relation_types)))
 
     '''
-    Create a list of pairs (entity_name, entity_type). For instance, (pfizer, biotechcompany) would be an output
-    of this
+    :param url_set: Dict where key = index and value = the URL it enumerates
     '''
-    def get_entity_types(self):
-        entity_types = self.knowledge_graph_df["Entity"].unique()
-        # Keep only the terms that represent the "generalizations" relationship
-        entity_type_tuples = list(map(lambda x: (x.split(":")[2], x.split(":")[1]) if len(x.split(":")) == 3
-                                        else (x.split(":")[0], None), entity_types))
-        # Return the samples that have the generalizations relationship AND skip the one case with a dash
-        return {name: t for name, t in entity_type_tuples if t is not None and len(name) > 1}
-
-    def construct_similarity_matrix(self):
-        sim_matrix = np.zeros((len(self.set_of_random_urls), len(self.set_of_random_urls)))
-        for k1, terms1 in self.set_of_random_urls.items():
-            for k2, terms2 in self.set_of_random_urls.items():
+    def construct_similarity_matrix(self, url_set):
+        sim_matrix = np.zeros((len(url_set), len(url_set)))
+        for k1, terms1 in url_set.items():
+            for k2, terms2 in url_set.items():
                 if k1 == k2:
                     continue
                 common_terms = list(set(terms1).intersection(terms2)) # Find the terms present in both URLs
@@ -90,6 +112,8 @@ class KnowledgeGraph:
     :return: the edit distance between the two
     '''
     def edit_distance(self, string1, string2):
+        if string1 in self.edit_distances:
+            return self.edit_distances[string1]
         memo = np.zeros((len(string1) + 1, len(string2) + 1))
         for i in range(len(memo)):
             memo[i][0] = i
@@ -101,6 +125,7 @@ class KnowledgeGraph:
                     memo[i][j] = memo[i - 1][j - 1]
                 else:
                     memo[i][j] = 1 + max(memo[i - 1][j], memo[i][j - 1], memo[i - 1][j - 1])
+        self.edit_distances[string1] = memo[-1][-1]
         return memo[-1][-1]
     '''
     This function attempt to calculate the "concept" of a node that is not present in the ReadTheWeb ontology
@@ -110,49 +135,51 @@ class KnowledgeGraph:
     '''
     def determine_concept_of_unknown_term(self, term):
         # First, check if the term is already present in the ReadTheWeb repository
-        min_dist = float("inf")
-        min_dist_match = ""
         # Change the term so it can be queried in the graph DB
         term_modified = dc.transform_entities_to_match_graph_concept_format(term)
-        for entity, concept in self.entity_concept_pairs.items():
-            if term_modified in entity:
-                # print("Match found: ", entity, concept)
-                if term_modified == entity:
-                    # Terminate on exact match
-                    return concept
-                else:
-                    dist = self.edit_distance(term.lower(), entity)
-                    if dist < min_dist:
-                        min_dist = dist
-                        min_dist_match = concept
-        if min_dist_match != "":
-            # Only return if we happened to find a suitable match
-            self.entity_concept_pairs.update({term_modified: min_dist_match})
-            return min_dist_match
-        similarity_scores = {c: 0 for c in self.concept_types}
+        candidates = self.triples.loc[(self.triples["Relation"] == "generalizations") &
+                                      (self.triples["Entity"].str.contains(term_modified))]
+        if candidates.shape[0] != 0:
+            # If a match is found, we can return
+            entities_to_check = candidates.loc[:, 'Entity']
+            candidates.loc[:, "NELL Match Sim"] = entities_to_check.apply(self.edit_distance, string2=term_modified)
+            # Return the candidate with the cheapest edit distance (most semantically similar)
+            # print(candidates.loc[candidates["NELL Match Sim"].idxmin()]["Entity"])
+            print("Direct match found: " + candidates.loc[candidates["NELL Match Sim"].idxmin()]["Entity"])
+            return candidates.loc[candidates["NELL Match Sim"].idxmin()]["Segmented Concept"]
         # Track the total similarity score for each of the unique entities
         # Compute the similarity between every entity we know of
-        seen_concepts = {}
-        threshold = 0
-        for concept in self.concept_types:
-            if concept in seen_concepts and similarity_scores[concept] < threshold:
-                # print(concept, similarity_scores[concept])
-                # If this concept has been encountered before and the similarity isn't high enough, skip
-                continue
+
+        def get_semantic_similarity(concept, term):
+            if concept.startswith("http"):
+                return -10
+            token_length = len(term.split(" "))
+            concept_length = len(concept.split(" "))
             tokens = self.nlp(concept + " " + term)
-            try:
-                if not tokens[-1].has_vector:
-                    # Some words (like COVID-19) do not actually have a word vector yet. Thus, we
-                    # return "unknown_concept" here since there's no way for us to know what they type is
-                    print(f"No word vector for {term}")
-                    return "unknown_concept"
-                sim = tokens[0].similarity(tokens[-1])
-                similarity_scores[concept] += sim
-                # print([t.text for t in tokens], tokens[0].similarity(tokens[-1]))
-            except KeyError:
-                # Sometimes the tokenizer breaks the concept apart, so catch it here
-                pass
-            seen_concepts.update({concept: None})
-        similarity_scores = {c: s/self.concept_counts[c] for c, s in similarity_scores.items()}
-        return max(similarity_scores, key=similarity_scores.get)
+            sim = 0
+            for i in range(concept_length):
+                for j in range(concept_length, concept_length + token_length):
+                    if not tokens[i].has_vector or not tokens[j].has_vector:
+                        # Some words (like COVID-19) do not actually have a word vector yet. Thus, we
+                        # return "unknown_concept" here since there's no way for us to know what they type is
+                        # print("No word vector for one of the terms")
+                        continue
+                    try:
+                        sim1 = tokens[i].similarity(tokens[j])
+                        # print(tokens[i], tokens[j], sim)
+                        sim = max(sim, sim1)
+                    except KeyError:
+                        # Sometimes the tokenizer breaks the concept apart, so catch it here
+                        continue
+            return sim
+        concept_similarities = pd.DataFrame(self.concept_types, columns=["Concept"])
+        concept_similarities["Scores"] = pd.Series(self.concept_types).apply(get_semantic_similarity, term=term)
+        concept_similarities = concept_similarities.sort_values(by=["Scores"], ascending=False)
+        # Scale by the number
+        # concept_similarities["Scores"] = concept_similarities["Scores"].apply(lambda x: x/self.concept_counts[x])
+        concept_similarities.to_csv("concepts.csv")
+        self.edit_distances.clear() # Edit distances only relevant to this specific term, wipe this dict
+        # Return concept associated
+        return concept_similarities.loc[concept_similarities["Scores"].idxmax()]["Concept"]
+
 
