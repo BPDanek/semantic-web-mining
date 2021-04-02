@@ -76,28 +76,15 @@ if __name__ == '__main__':
             knowledge_graph = pickle.load(f)
     else:
         knowledge_graph = KnowledgeGraph(knowledge_graph_df, urls_for_samples, nlp)
-    dc.to_pkl_file(KNOWLEDGE_GRAPH_PICKLE_FILE_NAME, knowledge_graph)
+    # dc.to_pkl_file(KNOWLEDGE_GRAPH_PICKLE_FILE_NAME, knowledge_graph)
     # Save every time, to capture changes we make
     url = 'https://www.theguardian.com/us-news/2021/apr/02/mlb-baseball-all-star-game-georgia-voting-law'
     start = time.time()
     domain_terms = en.get_domain_terms_from_url(url)
-    print(domain_terms)
+    # print(domain_terms)
     concept_list = []
-    for term in domain_terms:
-        concept = knowledge_graph.determine_concept_of_unknown_term(term)
-        if concept != "unknown_concept":
-            # Track the list of concepts
-            concept_list.append(concept)
-        print(f"Most likely concept for {term}: " + concept)
-    print(time.time() - start)
-
     '''
-    url = 'https://www.theringer.com/tv/2021/3/25/22351261/jessica-walter-obituary-arrested-development-archer'
-    start = time.time()
-    domain_terms = en.get_domain_terms_from_url(url)
-    print(domain_terms)
-    concept_list = []
-    for term in domain_terms[1:]:
+        for term in domain_terms:
         concept = knowledge_graph.determine_concept_of_unknown_term(term)
         if concept != "unknown_concept":
             # Track the list of concepts
@@ -106,6 +93,23 @@ if __name__ == '__main__':
     print(time.time() - start)
     '''
 
+    url = 'https://www.nytimes.com/2021/04/02/us/politics/mlb-all-star-game-moved.html?action=click&module=' \
+          'Top%20Stories&pgtype=Homepage'
+    # start = time.time()
+    domain_terms_1 = en.get_domain_terms_from_url(url)
+    # print(domain_terms_1)
+    # concept_list = []
+    '''
+        for term in domain_terms:
+        concept = knowledge_graph.determine_concept_of_unknown_term(term)
+        if concept != "unknown_concept":
+            # Track the list of concepts
+            concept_list.append(concept)
+        print(f"Most likely concept for {term}: " + concept)
+    print(time.time() - start)
+    '''
+
+    print(knowledge_graph.direct_domain_term_matches(domain_terms, domain_terms_1))
     # knowledge_graph.construct_similarity_matrix()
     '''
     # Once we have finished our testing, save the verified defunct/valid URLs to a pkl file so we don't have to do it

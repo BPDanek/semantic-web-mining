@@ -3,6 +3,8 @@ from collections import Counter
 import datacleaning as dc
 import pandas as pd
 from segmentation import segment
+from sklearn.metrics.pairwise import cosine_similarity
+from nltk.stem import PorterStemmer
 pd.options.mode.chained_assignment = None  # default='warn'
 
 
@@ -104,6 +106,49 @@ class KnowledgeGraph:
         # print(sim_matrix)
 
     '''
+    Directly match terms from the sets of two domain terms and return their similarity via a float
+    '''
+    def direct_domain_term_matches(self, domain_terms1, domain_terms2):
+        # Want to avoid missing matches between the same word with different case
+        domain_terms1 = list(map(dc.transform_entities_to_match_graph_concept_format, domain_terms1))
+        domain_terms2 = list(map(dc.transform_entities_to_match_graph_concept_format, domain_terms2))
+        domain_terms1, domain_terms2 = self.remove_duplicates(domain_terms1, domain_terms2)
+        print(domain_terms1)
+        print(domain_terms2)
+        full_set_of_domain_terms = list(set(domain_terms1 + domain_terms2))
+        print(full_set_of_domain_terms)
+        # Transform to dict keys to allow for easier lookup
+        domain_terms1 = dict.fromkeys(domain_terms1)
+        domain_terms2 = dict.fromkeys(domain_terms2)
+        vector1 = list(map(lambda x: 1 if x in domain_terms1 else 0, full_set_of_domain_terms))
+        vector2 = list(map(lambda x: 1 if x in domain_terms2 else 0, full_set_of_domain_terms))
+        print("Vector 1: ", vector1)
+        print("Vector 2: ", vector2)
+        return cosine_similarity(np.array([vector1]), np.array([vector2]))
+
+    '''
+    Possible that some terms are repeated but not exact matches e.g. Voting and Voters and 
+    some terms contained entirely. We want to first stem the words w/ PorterStemmer and 
+    then do some matching
+    '''
+    def remove_duplicates(self, terms1, terms2):
+        ps = PorterStemmer()
+        terms1 = list(map(lambda x: ps.stem(x), terms1))
+        terms2 = list(map(lambda x: ps.stem(x), terms2))
+        for i in range(len(terms1)):
+            for j in range(len(terms2)):
+                t, t1 = terms1[i], terms2[j]
+                if t == t1:
+                    continue
+                elif t in t1:
+                    # If the word t is contained in t1, then it replace t1 because they mean the same thing
+                    # and it shrinks the joint list
+                    terms1[i] = terms2[j]
+                elif t1 in t:
+                    terms2[j] = terms1[i]
+        return terms1, terms2
+
+    '''
     Utility function to do some string content comparisons. This is for when there are multiple matches 
     present in the ReadTheWeb corpus and we need to check the distances between the matches, to get the most
     likely one.
@@ -131,7 +176,6 @@ class KnowledgeGraph:
     This function attempt to calculate the "concept" of a node that is not present in the ReadTheWeb ontology
     It does so by iterating over the entity-concept pairs in the DB, computing the similarity between the term and 
     the entity, and summing the score.
-    
     '''
     def determine_concept_of_unknown_term(self, term):
         # First, check if the term is already present in the ReadTheWeb repository

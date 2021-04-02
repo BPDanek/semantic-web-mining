@@ -123,7 +123,7 @@ class EntityExtraction:
             domain_terms = metadata_tags
         # Sometimes duplicates emerge in the set of entities. Why? Who the hell knows. Let's select the 15 most common
         # in each and return them as domain terms
-        return [x for x, y in Counter(domain_terms).most_common(15)]
+        return [x for x, y in Counter(domain_terms).most_common(10)]
 
     def extract_web_domain_from_url(self, top_level_domains, url):
         '''

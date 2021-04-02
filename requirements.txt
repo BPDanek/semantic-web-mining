@@ -6,3 +6,4 @@ nltk
 numpy
 spacy
 flask
+sklearn
