@@ -32,8 +32,7 @@ class KnowledgeGraph:
         self.relation_types = self.triples["Relation"].unique()
         self.concept_types = self.triples["Segmented Concept"].unique()
         # Track the number of times each unique concept appears, to be used for normalizing scores
-
-        self.concept_counts = Counter(self.triples["Segmented Concept"])
+        self.concept_counts = Counter(self.triples["Segmented Concept"].tolist())
         # Collect a dictionary of URLs and their requisite domain terms. I want to try constructing a similarity matrix
         # based on the entity types and all that
 
@@ -53,8 +52,16 @@ class KnowledgeGraph:
         triples_df["Concept"] = self.knowledge_graph_df["Value"].apply(lambda x: x.split(":")[1]
                                                                     if not x.startswith("http") and
                                                                        len(x.split(":")) > 1 else x)
+        triples_df["Concept Counts"] = triples_df.groupby("Concept")["Concept"].transform('count')
+        triples_df["Value Literal Strings"] = self.knowledge_graph_df["Value Literal Strings"].apply(
+            lambda x: x.split("\t") if x is not None else [])
+        triples_df["Entity Literal Strings"] = self.knowledge_graph_df["Entity Literal Strings"].apply(
+            lambda x: x.split("\t") if x is not None else [])
+        triples_df.to_csv("triples.csv")
+        print("Saved file")
         # Partition the names of the concepts, to save computation in the actual graph construction
         triples_df["Segmented Concept"] = triples_df["Concept"].apply(self.segment_concept_names)
+
         return triples_df
 
     def segment_concept_names(self, concept):
@@ -104,6 +111,19 @@ class KnowledgeGraph:
                     print(k1, k2, common_terms)
                 sim_matrix[k1][k2] = len(common_terms) # The number of common elements in url i and url j
         # print(sim_matrix)
+
+    def harmonic_mean(self, a, b):
+        first, second = 0, 0
+        # Do it this way because we don't want a zero entry in one of the two scores to wipe out the whole harmonic mean
+        if a != 0:
+            first = 1/a
+        if b != 0:
+            second = 1/b
+        print(a, b, first, second)
+        try:
+            return 2/(first + second)
+        except ZeroDivisionError:
+            return 0
 
     '''
     Directly match terms from the sets of two domain terms and return their similarity via a float
@@ -184,13 +204,23 @@ class KnowledgeGraph:
         candidates = self.triples.loc[(self.triples["Relation"] == "generalizations") &
                                       (self.triples["Entity"].str.contains(term_modified))]
         if candidates.shape[0] != 0:
-            # If a match is found, we can return
             entities_to_check = candidates.loc[:, 'Entity']
             candidates.loc[:, "NELL Match Sim"] = entities_to_check.apply(self.edit_distance, string2=term_modified)
             # Return the candidate with the cheapest edit distance (most semantically similar)
             # print(candidates.loc[candidates["NELL Match Sim"].idxmin()]["Entity"])
-            print("Direct match found: " + candidates.loc[candidates["NELL Match Sim"].idxmin()]["Entity"])
-            return candidates.loc[candidates["NELL Match Sim"].idxmin()]["Segmented Concept"]
+            if candidates.loc[candidates["NELL Match Sim"].idxmin()]["NELL Match Sim"] == 0:
+                # Return direct matches here. I know it would be smarter to simply change the condition to
+                # build candidates, but it doesn't work for some reason
+                print("Direct match found: " + candidates.loc[candidates["NELL Match Sim"].idxmin()]["Entity"])
+                return candidates.loc[candidates["NELL Match Sim"].idxmin()]["Segmented Concept"]
+            candidates["Matches"] = candidates["Entity Literal Strings"].apply(
+                lambda x: True if term_modified in x else False)
+            # First, check the set of value literal strings (similar strings to the ones we've isolated), and if there
+            #  is a direct match, return
+            if candidates["Matches"].any():
+                # If we find a match in the set of aliases, return that
+                direct_matches = candidates.loc[candidates["Matches"]]["Segmented Concept"].reset_index(drop=True)
+                return direct_matches.loc[0]
         # Track the total similarity score for each of the unique entities
         # Compute the similarity between every entity we know of
 
@@ -211,17 +241,29 @@ class KnowledgeGraph:
                     try:
                         sim1 = tokens[i].similarity(tokens[j])
                         # print(tokens[i], tokens[j], sim)
-                        sim = max(sim, sim1)
+                        sim += (sim1**2)
                     except KeyError:
                         # Sometimes the tokenizer breaks the concept apart, so catch it here
                         continue
             return sim
+
         concept_similarities = pd.DataFrame(self.concept_types, columns=["Concept"])
         concept_similarities["Scores"] = pd.Series(self.concept_types).apply(get_semantic_similarity, term=term)
+        # Lots of columns where the concepts were URLs, drop those
+        concept_similarities = concept_similarities.loc[concept_similarities["Scores"] >= 0]
+        if (concept_similarities["Scores"] == 0).all():
+            # A full slate of zeros means that we don't have a word vector for this concept -> this concept is unknown
+            # If there were matches found in NELL that weren't direct, we fall back to those
+            if candidates.shape[0] != 0:
+                print("Closest match", candidates.loc[candidates["NELL Match Sim"].idxmin()]["Entity"])
+                return candidates.loc[candidates["NELL Match Sim"].idxmin()]["Segmented Concept"]
+            print("Unknown concept", term)
+            return "unknown_concept"
         concept_similarities = concept_similarities.sort_values(by=["Scores"], ascending=False)
         # Scale by the number
         # concept_similarities["Scores"] = concept_similarities["Scores"].apply(lambda x: x/self.concept_counts[x])
-        concept_similarities.to_csv("concepts.csv")
+        if term_modified == "los_angeles":
+            concept_similarities.to_csv("concepts.csv")
         self.edit_distances.clear() # Edit distances only relevant to this specific term, wipe this dict
         # Return concept associated
         return concept_similarities.loc[concept_similarities["Scores"].idxmax()]["Concept"]

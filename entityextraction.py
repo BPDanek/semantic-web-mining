@@ -49,6 +49,9 @@ class EntityExtraction:
             # Split the string on both the commas and the semicolons i.e. Coronavirus;COVID-19 is a single term in the
             # tags but should be separated
             tags = re.split('[,;]', meta_tag["content"])
+            if len(tags) == 1 and tags[0] == "null":
+                # Some NYT articles have this meta tag but no terms in it, query the <p> tags
+                tags = self.get_text_from_paragraph_tags(file_html)
         except (KeyError, TypeError):
             # Some files do not have keyword tags. Try to find the description and title, concatenate them, and
             # perform entity extraction on that
