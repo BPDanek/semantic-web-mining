@@ -113,17 +113,7 @@ class KnowledgeGraph:
         # print(sim_matrix)
 
     def harmonic_mean(self, a, b):
-        first, second = 0, 0
-        # Do it this way because we don't want a zero entry in one of the two scores to wipe out the whole harmonic mean
-        if a != 0:
-            first = 1/a
-        if b != 0:
-            second = 1/b
-        print(a, b, first, second)
-        try:
-            return 2/(first + second)
-        except ZeroDivisionError:
-            return 0
+        return (a+b)/2
 
     '''
     Directly match terms from the sets of two domain terms and return their similarity via a float
