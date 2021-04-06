@@ -1,16 +1,6 @@
-chrome.runtime.onInstalled.addListener(function() {
-    chrome.history.search({
-        'text': '',              // Return every history item....
-        'maxResults': 100  // that was accessed less than one week ago.
-    }, function(historyItem) {
-        console.log(historyItem)
-    });
-});
+let color = '#3aa757';
 
-chrome.runtime.onMessage.addListener(
-    function(request, sender, sendResponse) {
-        if (request.sendToDB == true)
-            console.log("sent response")
-            sendResponse({response: ("sendToDB reads TRRRRRRUUUEE ")});
-    }
-);
+chrome.runtime.onInstalled.addListener(() => {
+  chrome.storage.sync.set({ color });
+  console.log('Default background color set to %cgreen', `color: ${color}`);
+});
