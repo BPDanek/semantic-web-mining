@@ -26,7 +26,7 @@ Tasks:
 -------------------------------------------------------
 
 ## Run Flask App: 
-1. Navigate to folder containing echsrv.py (flask app) 
+1. Navigate to folder containing echosrv.py (flask app in /flaskplay/) 
     a. If you do not have flask installed run: 
         pip install flask 
 2. RUN: 
