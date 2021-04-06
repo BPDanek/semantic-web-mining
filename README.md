@@ -22,3 +22,17 @@ Tasks:
     - user login backend w/ access to data
 - Database:
     - acquired data to DB
+
+-------------------------------------------------------
+
+## Run Flask App: 
+1. Navigate to folder containing echsrv.py (flask app) 
+    a. If you do not have flask installed run: 
+        pip install flask 
+2. RUN: 
+    export FLASK_APP=echosrv.py
+3. RUN: 
+    flask run --host=0.0.0.0
+
+
+
