@@ -137,8 +137,7 @@ def validate_observation_structure(value):
 def delete_blank_entries_in_observation(value):
     """
     Utility function that will remove blank entries from each observation. Also, drop the last entry in each of these
-    lists (the source data) -  we have filtered the requisite information from these and no longer need them. We also
-    want to replace all relations of type 'generalization' with
+    lists (the source data) -  we have filtered the requisite information from these and no longer need them.
     """
     try:
         value.remove('')

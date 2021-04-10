@@ -5,6 +5,9 @@ import pandas as pd
 from segmentation import segment
 from sklearn.metrics.pairwise import cosine_similarity
 from nltk.stem import PorterStemmer
+import pickle
+from entityextraction import EntityExtraction
+import os
 pd.options.mode.chained_assignment = None  # default='warn'
 
 
@@ -13,29 +16,37 @@ class KnowledgeGraph:
     :param knowledge_graph_df: a DataFrame containing the rows of observations and the requisite information
                                 that comes with each one; i.e the type of relation it partakes in, the URLs that
                                 this info was gleaned from, etc.
-    :param urls_for_samples: Dict where keys are enumerated sample #s and values are the set of URLs that defined the
-                                relationship in that sample
-    :param set_of_random_urls: A subset of the urls_for_samples parameter, just in for ease of testing right now. Will
-                                remove later
     :param nlp: spaCy object
     '''
-    def __init__(self, knowledge_graph_df, urls_for_samples, nlp):
+    def __init__(self, knowledge_graph_df, nlp):
+        self.pkl_file_name = "segmentedgraphtriples.pkl"
         self.knowledge_graph_df = knowledge_graph_df
-        self.urls_for_samples = urls_for_samples
         self.nlp = nlp
+        self.entity_extraction = EntityExtraction(nlp)
         self.segmentation_mappings = {}
+        self.segmentation_mappings_inverted = {}
         self.edit_distances = {} # Track the edit distances so we don't recompute
-        self.triples = self.generate_triples()
+        self.sim_matrix = None
+        # Track the domain terms seen for a URL so we don't have to recalculate them. Saves computation time
+        self.url_domain_terms = {}
+        # Same for the concepts
+        self.url_concepts = {}
+        if not os.path.isfile(self.pkl_file_name):
+            self.triples = self.generate_triples()
+            dc.to_pkl_file(self.pkl_file_name, self.triples)
+        else:
+            with open(self.pkl_file_name, 'rb') as f:
+                self.triples = pickle.load(f)
         # When segmenting, don't check segmentations twice. Track the seen ones here
         # Gather the unique entities, relations, and values
         self.entity_types = self.triples["Entity"].unique()
         self.relation_types = self.triples["Relation"].unique()
         self.concept_types = self.triples["Segmented Concept"].unique()
-        # Track the number of times each unique concept appears, to be used for normalizing scores
-        self.concept_counts = Counter(self.triples["Segmented Concept"].tolist())
+        # Normalize the number of times a concept appears so we can scale each concept by its frequency. Higher
+        # frequency concepts (like personus, or country) should be weighted down, since two concepts labeled "personus"
+        # are not quite related
         # Collect a dictionary of URLs and their requisite domain terms. I want to try constructing a similarity matrix
         # based on the entity types and all that
-
         # Reindex starting from zero, since we are putting this information into a matrix
 
     '''
@@ -57,8 +68,8 @@ class KnowledgeGraph:
             lambda x: x.split("\t") if x is not None else [])
         triples_df["Entity Literal Strings"] = self.knowledge_graph_df["Entity Literal Strings"].apply(
             lambda x: x.split("\t") if x is not None else [])
-        triples_df.to_csv("triples.csv")
-        print("Saved file")
+        # triples_df.to_csv("triples.csv")
+        # print("Saved file")
         # Partition the names of the concepts, to save computation in the actual graph construction
         triples_df["Segmented Concept"] = triples_df["Concept"].apply(self.segment_concept_names)
 
@@ -86,10 +97,13 @@ class KnowledgeGraph:
             # Case if segmentation was
             # print(" ".join(concept_words))
             self.segmentation_mappings.update({concept: " ".join(concept_words)})
+            # Need to map back from segmentations to the original in a later step
+            self.segmentation_mappings_inverted.update({" ".join(concept_words): concept})
             return " ".join(concept_words)
         else:
             # print(concept)
             self.segmentation_mappings.update({concept: concept})
+            self.segmentation_mappings_inverted.update({concept: concept})
             return concept
 
     def get_relation_types(self):
@@ -98,19 +112,102 @@ class KnowledgeGraph:
         return dict.fromkeys(list(map(lambda x: x[2] if x[0] == '' else x[0], relation_types)))
 
     '''
-    :param url_set: Dict where key = index and value = the URL it enumerates
+    Given two URLs, this function will return a float value between 0 and 1 capturing their semantic similarity
     '''
-    def construct_similarity_matrix(self, url_set):
-        sim_matrix = np.zeros((len(url_set), len(url_set)))
-        for k1, terms1 in url_set.items():
-            for k2, terms2 in url_set.items():
-                if k1 == k2:
-                    continue
-                common_terms = list(set(terms1).intersection(terms2)) # Find the terms present in both URLs
-                if len(common_terms) > 0:
-                    print(k1, k2, common_terms)
-                sim_matrix[k1][k2] = len(common_terms) # The number of common elements in url i and url j
-        # print(sim_matrix)
+    def get_similarity_of_two_urls(self, url1, url2):
+        if url1 in self.url_domain_terms:
+            domain_terms = self.url_domain_terms[url1]
+        else:
+            domain_terms = self.entity_extraction.get_domain_terms_from_url(url1)
+            self.url_domain_terms.update({url1: domain_terms})
+        print(domain_terms)
+        if url1 in self.url_concepts:
+            print(f"{url1} concepts found already", self.url_concepts[url1])
+            concept_list = self.url_concepts[url1]
+        else:
+            concept_list = []
+            for term in domain_terms:
+                concept = self.determine_concept_of_unknown_term(term)
+                if concept != "unknown_concept":
+                    # Track the list of concepts
+                    concept_list.append(concept)
+                print(f"Most likely concept for {term}: " + concept)
+            self.url_concepts.update({url1: concept_list})
+        if url2 in self.url_domain_terms:
+            domain_terms_1 = self.url_domain_terms[url2]
+        else:
+            domain_terms_1 = self.entity_extraction.get_domain_terms_from_url(url2)
+            self.url_domain_terms.update({url2: domain_terms_1})
+        print(domain_terms_1)
+        if url2 in self.url_concepts:
+            print(f"{url2} concepts found already", self.url_concepts[url2])
+            concept_list_1 = self.url_concepts[url2]
+        else:
+            concept_list_1 = []
+            for term in domain_terms_1:
+                concept = self.determine_concept_of_unknown_term(term)
+                if concept != "unknown_concept":
+                    # Track the list of concepts
+                    concept_list_1.append(concept)
+                print(f"Most likely concept for {term}: " + concept)
+            self.url_concepts.update({url2: concept_list_1})
+        domain_term_matching_score = self.direct_domain_term_matches(domain_terms, domain_terms_1)[0][0]
+        # print("Domain term matching", domain_term_matching_score)
+        concept_matching_score = self.direct_domain_term_matches(concept_list, concept_list_1)[0][0]
+        # print("Concept matching score", concept_matching_score)
+        print("Total similarity", self.harmonic_mean(domain_term_matching_score, concept_matching_score))
+        return self.harmonic_mean(domain_term_matching_score, concept_matching_score)
+
+    '''
+    :param url_set: List of the URLs 
+    '''
+    def construct_similarity_matrix(self, url_list):
+        # Same URLs should have a similarity of one
+        if self.sim_matrix is None:
+            sim_matrix = np.zeros((len(url_list), len(url_list)))
+            np.fill_diagonal(sim_matrix, 1)
+            for i in range(len(url_list)):
+                for j in range(i + 1, len(url_list)):
+                    # Only check top half, since matrix is symmetric
+                    url1, url2 = url_list[i], url_list[j]
+                    if url1 == url2:
+                        # Perhaps two URLs end up being the same. Catch it here
+                        sim_matrix[i][j] = 1
+                        continue
+                    sim_matrix[i][j] = self.get_similarity_of_two_urls(url1, url2)
+            # Now, populate the bottom half of the matrix
+            for i in range(len(url_list)):
+                for j in range(i + 1, len(url_list)):
+                    sim_matrix[j][i] = sim_matrix[i][j]
+            print(sim_matrix)
+            self.sim_matrix = sim_matrix
+            return sim_matrix
+        else:
+            print("Check")
+            # If the matrix exists already, we want to add the new URL domain terms to the existing ones
+            sim_matrix = self.sim_matrix
+            # Reshape the similarity matrix to account for the new URL
+            zero_row = np.zeros((1, self.sim_matrix.shape[0]))
+            sim_matrix = np.concatenate((sim_matrix, zero_row), axis=0)
+            zero_col = np.zeros((1, sim_matrix.shape[0]))
+            sim_matrix = np.concatenate((sim_matrix, zero_col.T), axis=1)
+            print(sim_matrix)
+            # Leverage the fact that the majority of the sim matrix has already been calculated
+            for i in range(sim_matrix.shape[0] - len(url_list)):
+                for j in range(i + 1, sim_matrix.shape[1] - len(url_list)):
+                    # Only check top half, since matrix is symmetric
+                    url1, url2 = url_list[i], url_list[j]
+                    if url1 == url2:
+                        # Perhaps two URLs end up being the same. Catch it here
+                        sim_matrix[i][j] = 1
+                        continue
+                    sim_matrix[i][j] = self.get_similarity_of_two_urls(url1, url2)
+            for i in range(sim_matrix.shape[0]):
+                for j in range(sim_matrix.shape[1]):
+                    sim_matrix[j][i] = sim_matrix[i][j]
+            print(sim_matrix)
+            self.sim_matrix = sim_matrix
+            return sim_matrix
 
     def harmonic_mean(self, a, b):
         return (a+b)/2
@@ -123,17 +220,18 @@ class KnowledgeGraph:
         domain_terms1 = list(map(dc.transform_entities_to_match_graph_concept_format, domain_terms1))
         domain_terms2 = list(map(dc.transform_entities_to_match_graph_concept_format, domain_terms2))
         domain_terms1, domain_terms2 = self.remove_duplicates(domain_terms1, domain_terms2)
-        print(domain_terms1)
-        print(domain_terms2)
+        # print(domain_terms1)
+        # print(domain_terms2)
         full_set_of_domain_terms = list(set(domain_terms1 + domain_terms2))
-        print(full_set_of_domain_terms)
+        # print(full_set_of_domain_terms)
         # Transform to dict keys to allow for easier lookup
         domain_terms1 = dict.fromkeys(domain_terms1)
         domain_terms2 = dict.fromkeys(domain_terms2)
+
         vector1 = list(map(lambda x: 1 if x in domain_terms1 else 0, full_set_of_domain_terms))
         vector2 = list(map(lambda x: 1 if x in domain_terms2 else 0, full_set_of_domain_terms))
-        print("Vector 1: ", vector1)
-        print("Vector 2: ", vector2)
+        # print("Vector 1: ", vector1)
+        # print("Vector 2: ", vector2)
         return cosine_similarity(np.array([vector1]), np.array([vector2]))
 
     '''
@@ -158,6 +256,12 @@ class KnowledgeGraph:
                     terms2[j] = terms1[i]
         return terms1, terms2
 
+    '''
+    Simple utility function that saves the dataframe of relevant graph data to a pkl file. Kept here
+    to simplify the syntax in driver
+    '''
+    def save_triples_df_to_pkl_file(self):
+        dc.to_pkl_file(self.pkl_file_name, self.triples)
     '''
     Utility function to do some string content comparisons. This is for when there are multiple matches 
     present in the ReadTheWeb corpus and we need to check the distances between the matches, to get the most
@@ -193,6 +297,7 @@ class KnowledgeGraph:
         term_modified = dc.transform_entities_to_match_graph_concept_format(term)
         candidates = self.triples.loc[(self.triples["Relation"] == "generalizations") &
                                       (self.triples["Entity"].str.contains(term_modified))]
+        # candidates.to_csv("candidates.csv")
         if candidates.shape[0] != 0:
             entities_to_check = candidates.loc[:, 'Entity']
             candidates.loc[:, "NELL Match Sim"] = entities_to_check.apply(self.edit_distance, string2=term_modified)
@@ -250,12 +355,17 @@ class KnowledgeGraph:
             print("Unknown concept", term)
             return "unknown_concept"
         concept_similarities = concept_similarities.sort_values(by=["Scores"], ascending=False)
-        # Scale by the number
-        # concept_similarities["Scores"] = concept_similarities["Scores"].apply(lambda x: x/self.concept_counts[x])
-        if term_modified == "los_angeles":
-            concept_similarities.to_csv("concepts.csv")
         self.edit_distances.clear() # Edit distances only relevant to this specific term, wipe this dict
+        best_concept = concept_similarities.loc[concept_similarities["Scores"].idxmax()]["Concept"]
+        # Add the newly delineated concept to the corpus, to allow for easier search later on
+        best_concept_unsegmented = self.triples.loc[self.triples["Segmented Concept"] ==
+                                                    best_concept]["Concept"].iloc[0]
+        new_row = pd.DataFrame([[term_modified, "generalizations", best_concept_unsegmented, best_concept, 1, "", ""]],
+                               columns=["Entity", "Relation", "Concept", "Segmented Concept", "Concept Counts",
+                                        "Value Literal Strings", "Entity Literal Strings"])
+        self.triples = self.triples.append(new_row, ignore_index=True)
+        # print(self.triples.shape)
         # Return concept associated
-        return concept_similarities.loc[concept_similarities["Scores"].idxmax()]["Concept"]
+        return best_concept
 
 
