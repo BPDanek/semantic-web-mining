@@ -24,7 +24,7 @@ Tasks:
     - acquired data to DB
 
 # Knowledge Graph Usage
-Download the [NELL corpus](http://rtw.ml.cmu.edu/rtw/resources), select the download that says "Tab-separated-value file with every belief in the KB, one per line (file format documentation)". Unzip the `.gz` file and rename the `.csv` inside to `knowledgegraphdata.csv`.
+Download the [NELL corpus](http://rtw.ml.cmu.edu/rtw/resources), select the download that says "Tab-separated-value file with every belief in the KB, one per line (file format documentation)". Unzip the `.gz` file and rename the `.csv` inside to `knowledgegraphdata.csv`, move it to your working directory.
 
 Install requirements:
 
