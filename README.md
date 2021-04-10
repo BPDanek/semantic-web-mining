@@ -24,11 +24,21 @@ Tasks:
     - acquired data to DB
 
 # Knowledge Graph Usage
-First, install requirements:
+Download the [NELL corpus](http://rtw.ml.cmu.edu/rtw/resources), select the download that says "Tab-separated-value file with every belief in the KB, one per line (file format documentation)". Unzip the `.gz` file and rename the `.csv` inside to `knowledgegraphdata.csv`.
+
+Install requirements:
 
 ```bash
 pip install requirements.txt
 ```
+
+The app loads data from `.pkl` files to speed up various processes. The first step is to generate these files. Execute the driver class:
+
+```bash
+python driver.py
+```
+
+Be forewarned, this will take some time! The NELL corpus is very, very large, which is why this step exists in the first place. 
 
 Set the environment variables `FLASK_APP` and `FLASK_ENV`: 
 
