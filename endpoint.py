@@ -23,3 +23,10 @@ def return_sim_matrix():
     sim_matrix = knowledge_graph.construct_similarity_matrix(url_list)
     knowledge_graph.save_triples_df_to_pkl_file()
     return json.dumps(sim_matrix.tolist())
+
+
+@app.route('/pagerank', methods=['POST'])
+def execute_pagerank():
+    k = int(json.loads(request.form['k']))
+    domain_terms = knowledge_graph.pagerank(k)
+    return ' '.join(domain_terms)

@@ -15,3 +15,10 @@ payload = {
     'url_list': json.dumps(url_list)
 }
 requests.post(local_endpoint, data=payload)
+local_endpoint = "http://127.0.0.1:5000"
+local_endpoint += '/pagerank'
+payload = {
+    'k': 2
+}
+requests.post(local_endpoint, data=payload)
+
