@@ -29,7 +29,7 @@ Download the [NELL corpus](http://rtw.ml.cmu.edu/rtw/resources), select the down
 Install requirements:
 
 ```bash
-pip install requirements.txt
+pip install -r requirements.txt
 ```
 
 The app loads data from `.pkl` files to speed up various processes. The first step is to generate these files. Execute the driver class:
@@ -63,9 +63,9 @@ flask run
 Request bodies for this need to be computed within Python with spaCy, so run:
 
 ```bash
-python requestlauncher.py [filename]
+python requestlauncher.py [url_list]
 ```
 
-where the file is a list of URLs.
+where the parameter is a comma-separated list of URLs.
 
 The app will print out (in the console) a similarity matrix where entry (i,j) is the number of common domain terms between URL i and URL j.
