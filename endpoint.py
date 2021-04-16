@@ -3,7 +3,6 @@ from flask import request
 from graphconstructor import KnowledgeGraph
 import datacleaning as dc
 import spacy
-import numpy as np
 import json
 
 app = Flask(__name__)
@@ -25,8 +24,8 @@ def return_sim_matrix():
     return json.dumps(sim_matrix.tolist())
 
 
-@app.route('/pagerank', methods=['POST'])
-def execute_pagerank():
+@app.route('/getrecommendations', methods=['POST'])
+def get_recommendations():
     k = int(json.loads(request.form['k']))
-    domain_terms = knowledge_graph.pagerank(k)
-    return ' '.join(domain_terms)
+    recs = knowledge_graph.get_recommendations(k)
+    return ' '.join(recs)

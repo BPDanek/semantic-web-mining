@@ -8,7 +8,10 @@ from nltk.stem import PorterStemmer
 import pickle
 from entityextraction import EntityExtraction
 import os
+from googlesearch import search
 pd.options.mode.chained_assignment = None  # default='warn'
+
+DEBUG = False  # Toggle to enable .pkl file usage when restarting the app a lot
 
 
 class KnowledgeGraph:
@@ -29,31 +32,36 @@ class KnowledgeGraph:
         self.entity_extraction = EntityExtraction(nlp)
         self.segmentation_mappings = {}
         self.segmentation_mappings_inverted = {}
-        if not os.path.isfile(self.url_indices_mappings_pkl_file_name):
-            self.indices_for_urls = {}
+        if DEBUG:
+            # If doing a lot of debugging and restarting the app, save time by not re-launching
+            # the code each time
+            if not os.path.isfile(self.url_indices_mappings_pkl_file_name):
+                self.indices_for_urls = {}
+            else:
+                with open(self.url_indices_mappings_pkl_file_name, 'rb') as f:
+                    self.indices_for_urls = pickle.load(f)
+            if not os.path.isfile(self.sim_matrix_pkl_file_name):
+                self.sim_matrix = None
+            else:
+                with open(self.sim_matrix_pkl_file_name, 'rb') as f:
+                    self.sim_matrix = pickle.load(f)
+            if not os.path.isfile(self.url_domain_terms_pkl_file_name):
+                self.url_domain_terms = {}
+            else:
+                with open(self.url_domain_terms_pkl_file_name, 'rb') as f:
+                    self.url_domain_terms = pickle.load(f)
+            if not os.path.isfile(self.url_concepts_pkl_file_name):
+                self.url_concepts = {}
+            else:
+                with open(self.url_concepts_pkl_file_name, 'rb') as f:
+                    self.url_concepts = pickle.load(f)
         else:
-            with open(self.url_indices_mappings_pkl_file_name, 'rb') as f:
-                self.indices_for_urls = pickle.load(f)
+            self.indices_for_urls = {}
+            self.sim_matrix = None
+            self.url_domain_terms = {}
+            self.url_concepts = {}
         self.c = 0.6
         self.edit_distances = {} # Track the edit distances so we don't recompute
-        if not os.path.isfile(self.sim_matrix_pkl_file_name):
-            self.sim_matrix = None
-        else:
-            with open(self.sim_matrix_pkl_file_name, 'rb') as f:
-                self.sim_matrix = pickle.load(f)
-        # Track the domain terms seen for a URL so we don't have to recalculate them. Saves computation time
-        if not os.path.isfile(self.url_domain_terms_pkl_file_name):
-            self.url_domain_terms = {}
-        else:
-            with open(self.url_domain_terms_pkl_file_name, 'rb') as f:
-                self.url_domain_terms = pickle.load(f)
-
-        # Same for the concepts
-        if not os.path.isfile(self.url_concepts_pkl_file_name):
-            self.url_concepts = {}
-        else:
-            with open(self.url_concepts_pkl_file_name, 'rb') as f:
-                self.url_concepts = pickle.load(f)
         if not os.path.isfile(self.pkl_file_name):
             self.triples = self.generate_triples()
             dc.to_pkl_file(self.pkl_file_name, self.triples)
@@ -143,9 +151,15 @@ class KnowledgeGraph:
         else:
             domain_terms = self.entity_extraction.get_domain_terms_from_url(url1)
             self.url_domain_terms.update({url1: domain_terms})
-        print(url1, domain_terms)
+        if url2 in self.url_domain_terms:
+            domain_terms_1 = self.url_domain_terms[url2]
+        else:
+            domain_terms_1 = self.entity_extraction.get_domain_terms_from_url(url2)
+            self.url_domain_terms.update({url2: domain_terms_1})
+        print("Similarity between:")
+        print(url1)
+        print(url2)
         if url1 in self.url_concepts:
-            # print(f"{url1} concepts found already", self.url_concepts[url1])
             concept_list = self.url_concepts[url1]
         else:
             concept_list = []
@@ -154,14 +168,10 @@ class KnowledgeGraph:
                 if concept != "unknown_concept":
                     # Track the list of concepts
                     concept_list.append(concept)
-                # print(f"Most likely concept for {term}: " + concept)
+                if DEBUG:
+                    print(f"Most likely concept for {term}: " + concept)
             self.url_concepts.update({url1: concept_list})
-        if url2 in self.url_domain_terms:
-            domain_terms_1 = self.url_domain_terms[url2]
-        else:
-            domain_terms_1 = self.entity_extraction.get_domain_terms_from_url(url2)
-            self.url_domain_terms.update({url2: domain_terms_1})
-        print(url2, domain_terms_1)
+        # print(url2, domain_terms_1)
         if url2 in self.url_concepts:
             # print(f"{url2} concepts found already", self.url_concepts[url2])
             concept_list_1 = self.url_concepts[url2]
@@ -172,12 +182,14 @@ class KnowledgeGraph:
                 if concept != "unknown_concept":
                     # Track the list of concepts
                     concept_list_1.append(concept)
-                # print(f"Most likely concept for {term}: " + concept)
+                if DEBUG:
+                    print(f"Most likely concept for {term}: " + concept)
             self.url_concepts.update({url2: concept_list_1})
         domain_term_matching_score = self.direct_domain_term_matches(domain_terms, domain_terms_1)[0][0]
-        # print("Domain term matching", domain_term_matching_score)
         concept_matching_score = self.direct_domain_term_matches(concept_list, concept_list_1)[0][0]
-        # print("Concept matching score", concept_matching_score)
+        if DEBUG:
+            print("Domain term matching", domain_term_matching_score)
+            print("Concept matching score", concept_matching_score)
         print("Total similarity", self.harmonic_mean(domain_term_matching_score, concept_matching_score))
         return self.harmonic_mean(domain_term_matching_score, concept_matching_score)
 
@@ -190,23 +202,45 @@ class KnowledgeGraph:
         i = 1
         v = np.full(self.sim_matrix.shape[0], 1/self.sim_matrix.shape[0])
         u = v
-        while i < 25:
+        while i < 50:
             u_new = ((1-self.c) * np.dot(self.sim_matrix, u)) + (self.c * v)
             u = u_new
             i += 1
         # Get the URLs that best capture the user's browsing history, in descending order to
         # get the most dominant ones first
         top_urls = np.argsort(-u)
+        if DEBUG:
+            print(top_urls)
         # Collect a list of domain terms that best capture the user's browser history
         best_domain_terms = []
         for index in top_urls[:k]:
             url = self.indices_for_urls[index]
             best_domain_terms += self.url_domain_terms[url]
-        print(top_urls)
-        print(list(set(best_domain_terms)))
-        dc.to_pkl_file(self.url_concepts_pkl_file_name, self.url_concepts)
-        dc.to_pkl_file(self.url_domain_terms_pkl_file_name, self.url_domain_terms)
-        return list(set(best_domain_terms))
+        if DEBUG:
+            dc.to_pkl_file(self.url_concepts_pkl_file_name, self.url_concepts)
+            dc.to_pkl_file(self.url_domain_terms_pkl_file_name, self.url_domain_terms)
+        print([x for x, y in Counter(best_domain_terms).most_common(15)])
+        return [x for x, y in Counter(best_domain_terms).most_common(15)]
+
+    '''
+    Given the domain terms from pagerank, we want to get the top 10 google search results
+    for these domain terms
+    :param k: The number of URLs we want to consider as the top elements. Used in pagerank call
+    '''
+    def get_recommendations(self, k):
+        best_domain_terms = self.pagerank(k)
+        # Use n-grams of this list to generate the most relevant search results. I think n = 3 is a good choice
+        recs = []
+        for i in range(0, len(best_domain_terms), 3):
+            if DEBUG:
+                print("Query: ", ' '.join(best_domain_terms[i:i+3]))
+            # For each n-gram, return the top 5 urls from google
+            for j in search(' '.join(best_domain_terms[i:i+3]), tld="co.in", num=5, stop=5, pause=1):
+                recs.append(j)
+        # Return the top 10 most frequent search results from our ngram query
+        for url in [x for x,y in Counter(recs).most_common() if x not in self.url_concepts][:10]:
+            print(url)
+        return [x for x,y in Counter(recs).most_common() if x not in self.url_concepts][:10]
 
     '''
     :param url_set: List of the URLs 
@@ -232,16 +266,18 @@ class KnowledgeGraph:
             for i in range(len(url_list)):
                 for j in range(i + 1, len(url_list)):
                     sim_matrix[j][i] = sim_matrix[i][j]
-            print(sim_matrix)
             self.sim_matrix = sim_matrix
-            self.save_sim_matrix_to_pkl_file()
-            self.save_indices_to_pkl_file()
+            if DEBUG:
+                print(sim_matrix)
+                self.save_sim_matrix_to_pkl_file()
+                self.save_indices_to_pkl_file()
             return sim_matrix
         else:
             print("Sim matrix exists, adding to the one that's already there")
             # If the matrix exists already, we want to add the new URL domain terms to the existing ones
             sim_matrix = self.sim_matrix
-            print(sim_matrix.shape)
+            if DEBUG:
+                print(sim_matrix.shape)
             starting_index = len(self.indices_for_urls)
             # Only select the URLs that haven't been seen before
             url_list = [u for u in url_list if u not in self.url_domain_terms]
@@ -253,13 +289,14 @@ class KnowledgeGraph:
             sim_matrix = np.concatenate((sim_matrix, zero_row), axis=0)
             zero_col = np.zeros((len(url_list), sim_matrix.shape[0]))
             sim_matrix = np.concatenate((sim_matrix, zero_col.T), axis=1)
-            print(sim_matrix.shape)
+            if DEBUG:
+                print(sim_matrix.shape)
             # Leverage the fact that the majority of the sim matrix has already been calculated
             for i in range(sim_matrix.shape[1]):
                 # Fill out all the new columns
                 for j in range(sim_matrix.shape[0] - len(url_list), sim_matrix.shape[0]):
-                    print(i,j)
-
+                    if DEBUG:
+                        print(i, j)
                     # Only check top half, since matrix is symmetric
                     url1, url2 = url_list[j-sim_matrix.shape[0]], self.indices_for_urls[i]
                     if url1 == url2 or i == j:
@@ -271,9 +308,11 @@ class KnowledgeGraph:
                 for j in range(sim_matrix.shape[1]):
                     sim_matrix[j][i] = sim_matrix[i][j]
             self.sim_matrix = sim_matrix
-            # Keep it in the pkl file to access later
-            self.save_sim_matrix_to_pkl_file()
-            self.save_indices_to_pkl_file()
+            if DEBUG:
+                print(sim_matrix)
+                # Keep it in the pkl file to access later
+                self.save_sim_matrix_to_pkl_file()
+                self.save_indices_to_pkl_file()
             return sim_matrix
 
     def harmonic_mean(self, a, b):
@@ -423,9 +462,11 @@ class KnowledgeGraph:
             # A full slate of zeros means that we don't have a word vector for this concept -> this concept is unknown
             # If there were matches found in NELL that weren't direct, we fall back to those
             if candidates.shape[0] != 0:
-                # print("Closest match", candidates.loc[candidates["NELL Match Sim"].idxmin()]["Entity"])
+                if DEBUG:
+                    print("Closest match", candidates.loc[candidates["NELL Match Sim"].idxmin()]["Entity"])
                 return candidates.loc[candidates["NELL Match Sim"].idxmin()]["Segmented Concept"]
-            # print("Unknown concept", term)
+            if DEBUG:
+                print("Unknown concept", term)
             return "unknown_concept"
         concept_similarities = concept_similarities.sort_values(by=["Scores"], ascending=False)
         self.edit_distances.clear() # Edit distances only relevant to this specific term, wipe this dict
