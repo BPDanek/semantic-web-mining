@@ -233,14 +233,14 @@ class KnowledgeGraph:
         recs = []
         for i in range(0, len(best_domain_terms), 3):
             if DEBUG:
-                print("Query: ", ' '.join(best_domain_terms[i:i+3]))
+                print("Query: ", ' '.join(best_domain_terms[i:i + 3]))
             # For each n-gram, return the top 5 urls from google
-            for j in search(' '.join(best_domain_terms[i:i+3]), tld="co.in", num=5, stop=5, pause=1):
+            for j in search(' '.join(best_domain_terms[i:i + 3]), tld="co.in", num=2, stop=2, pause=1):
                 recs.append(j)
         # Return the top 10 most frequent search results from our ngram query
-        for url in [x for x,y in Counter(recs).most_common() if x not in self.url_concepts][:10]:
+        for url in [x for x, y in Counter(recs).most_common() if x not in self.url_concepts][:10]:
             print(url)
-        return [x for x,y in Counter(recs).most_common() if x not in self.url_concepts][:10]
+        return [x for x, y in Counter(recs).most_common() if x not in self.url_concepts][:10]
 
     '''
     :param url_set: List of the URLs 
